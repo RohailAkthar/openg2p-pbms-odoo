@@ -159,7 +159,7 @@ class G2PEligibilityRuleDefinition(models.Model):
 
             where_str = (" WHERE %s" % where_clause) if where_clause else ""
             if target_model._name == "res.partner":
-                id_field = "pensioner_zanid"
+                id_field = "benf_zan_id"
                 alias = "link_registry_id"
             else:
                 id_field = "link_registry_id"
