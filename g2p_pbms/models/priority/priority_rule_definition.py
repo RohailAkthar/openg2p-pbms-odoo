@@ -129,11 +129,28 @@ class G2PPriorityRuleDefinition(models.Model):
                 continue
 
             where_str = (" WHERE %s" % where_clause) if where_clause else ""
-            # Use the target model's table name in the SQL query.
-            id_field = "id" if target_model._name == "res.partner" else "link_registry_id"
+            if target_model._name == "res.partner":
+                id_field = "benf_zan_id"
+                alias = "link_registry_id"
+            else:
+                id_field = "link_registry_id"
+                alias = "link_registry_id"
+
+            # Extract the table name from the FROM clause.
+            tokens = from_clause.strip().split()
+
+            if len(tokens) >= 3 and tokens[1].lower() == "as":
+                table_alias = tokens[2]
+            else:
+                table_alias = tokens[0]
+
             query_str = (
-                'SELECT "%s".%s::TEXT AS link_registry_id FROM ' % (target_model._table, id_field) + from_clause + where_str
+                "SELECT %s.%s::TEXT AS %s FROM "
+                % (table_alias, id_field, alias)
+                + from_clause
+                + where_str
             )
+
 
             # Format the parameters as strings.
             formatted_params = list(
