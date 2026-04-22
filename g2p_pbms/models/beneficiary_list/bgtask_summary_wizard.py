@@ -304,19 +304,12 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             "Signature": jwt_token
         }
         try:
-            response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+            response = requests.post(endpoint, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
             response_json = response.json()
         except Exception as e:
             _logger.error("API call failed: %s", e)
-            return {
-                "message": {
-                    "total_beneficiary_count": 0,
-                    "page": page,
-                    "page_size": page_size,
-                    "beneficiaries": []
-                }
-            }
+            raise e
         return response_json
 
     @api.depends('target_registry')
