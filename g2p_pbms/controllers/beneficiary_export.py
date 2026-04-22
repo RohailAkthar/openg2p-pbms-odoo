@@ -58,8 +58,19 @@ class G2PBeneficiaryExportController(http.Controller):
             return request.not_found()
 
         # Get the actual Beneficiary List to find the total count
-        beneficiary_list = request.env["g2p.beneficiary.list"].sudo().browse(wizard.beneficiary_list_id)
+        # We search by UUID because wizard.beneficiary_list_id depends on context which is lost in the controller
+        list_uuid = wizard.beneficiary_list_uuid
+        beneficiary_list = request.env["g2p.beneficiary.list"].sudo().search([
+            ('beneficiary_list_id', '=', list_uuid)
+        ], limit=1)
+        
+        if not beneficiary_list:
+            _logger.warning("Could not find Beneficiary List with UUID %s for wizard %s", list_uuid, wizard_id)
+            # Fallback to the ID if it happens to be set (though usually it won't be)
+            beneficiary_list = request.env["g2p.beneficiary.list"].sudo().browse(wizard.beneficiary_list_id)
+
         total_count = beneficiary_list.number_of_registrants or 0
+        _logger.info("Exporting %s beneficiaries for list %s (UUID: %s)", total_count, beneficiary_list.mnemonic, list_uuid)
         num_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 0
 
         def generate_csv_data():
