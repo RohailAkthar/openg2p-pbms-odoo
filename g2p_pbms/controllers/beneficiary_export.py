@@ -1,10 +1,14 @@
 import io
 import csv
 import json
-from odoo import http
-from odoo.http import request
+import math
+import logging
 import requests
+import time
+from odoo import http, api
+from odoo.http import request
 
+_logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 1000
 
@@ -33,7 +37,7 @@ class G2PBeneficiaryExportController(http.Controller):
         ("mobile_wallet", "Mobile Wallet"),
         ("other_pension", "Other Pension"),
         ("scheme_name", "Scheme Name"),
-        # Nominee fields — first/last name merged into "Nominee Name"
+        # Nominee fields — first/middle/last name merged into "Nominee Name"
         ("nominee_name", "Nominee Name"),
         ("nominee_gender", "Nominee Gender"),
         ("nominee_zanid", "Nominee ZAN ID"),
@@ -52,127 +56,91 @@ class G2PBeneficiaryExportController(http.Controller):
         auth="user"
     )
     def export_beneficiaries(self, wizard_id, **kw):
-        import math
-
-        wizard = request.env["g2p.bgtask.summary.wizard"].sudo().browse(wizard_id)
+        # Initial check with user permissions
+        wizard = request.env["g2p.bgtask.summary.wizard"].browse(wizard_id)
         if not wizard.exists():
             return request.not_found()
 
-        # ✅ 1. Fetch live count from API /summary endpoint
-        api_url = request.env['ir.config_parameter'].sudo().get_param('g2p_pbms.staff_portal_api_url')
-        sender_id = request.env['ir.config_parameter'].sudo().get_param('g2p_pbms.keymanager_sign_application_id')
-        list_uuid = wizard.beneficiary_list_uuid
+        registry = request.env.registry
+        uid = request.uid
+        context = dict(request.env.context)
         
-        total_count = 0
-        if api_url and list_uuid:
-            try:
-                summary_endpoint = f"{api_url}/summary"
-                payload = {
-                    "signature": "string",
-                    "header": {
-                        "version": "1.0.0",
-                        "message_id": "string",
-                        "message_ts": "string",
-                        "action": "summary",
-                        "sender_id": sender_id,
-                        "sender_uri": "",
-                        "receiver_id": "",
-                        "total_count": 0,
-                        "is_msg_encrypted": False,
-                        "meta": "string"
-                    },
-                    "message": {
-                        "beneficiary_list_id": list_uuid,
-                        "target_registry": wizard.target_registry
-                    }
-                }
-                # Use exact separators for JWT signature consistency
-                payload_json = json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True)
-                jwt_token = request.env['keymanager.provider'].sudo().jwt_sign_keymanager(payload_json)
-                
-                res = requests.post(
-                    summary_endpoint, 
-                    json=payload, 
-                    headers={"Signature": jwt_token, "Content-Type": "application/json"}, 
-                    timeout=10
-                )
-                res.raise_for_status()
-                summary_data = res.json()
-                
-                msg = summary_data.get("message", {})
-                total_count = msg.get("beneficiary_list_summary", {}).get("number_of_registrants") or 0
-                _logger.info("API Summary reported %s beneficiaries for list %s", total_count, list_uuid)
-            except Exception as e:
-                _logger.error("Failed to fetch live count from API: %s", e)
-        
-        # Fallback to Odoo record if API fails or returns 0
-        if not total_count:
-            beneficiary_list = request.env["g2p.beneficiary.list"].sudo().search([('beneficiary_list_id', '=', list_uuid)], limit=1)
-            total_count = beneficiary_list.number_of_registrants or 0
-            _logger.info("Falling back to Odoo record count: %s", total_count)
-
-        num_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 0
-
         def generate_csv_data():
-            output = io.StringIO()
-            writer = csv.writer(output)
-
-            # ✅ 1. Yield BOM + Headers immediately to initiate download
-            output.write('\ufeff')
-            friendly_headers = [header for _, header in self.EXPORT_COLUMNS]
-            writer.writerow(friendly_headers)
-            yield output.getvalue()
-            output.truncate(0)
-            output.seek(0)
-
-            # ✅ 2. Loop through pages based on total count
-            for page in range(1, num_pages + 1):
-                try:
-                    res = wizard.get_beneficiaries(
-                        wizard.id,
-                        page,
-                        PAGE_SIZE,
-                        None # No filters
-                    )
-                    records = res.get("message", {}).get("beneficiaries") or []
-                except Exception as e:
-                    _logger.error("Export batch %s failed: %s", page, e, exc_info=True)
-                    request.env.cr.rollback()
-                    continue
-
-                # ✅ 3. Safety break for count drift
-                if not records:
-                    break
-
-                for row in records:
-                    # ✅ 4. Nominee merge logic with stripping
-                    nominee_parts = [
-                        str(row.get(f)).strip()
-                        for f in ("nominee_first_name", "nominee_middle_name", "nominee_last_name")
-                        if row.get(f) and str(row.get(f)).strip()
-                    ]
-                    row["nominee_name"] = " ".join(nominee_parts) if nominee_parts else ""
-
-                    csv_row = []
-                    for field, _ in self.EXPORT_COLUMNS:
-                        val = row.get(field)
-                        if isinstance(val, (dict, list)):
-                            val = json.dumps(val)
-                        # ✅ 5. Safe string casting for all columns
-                        csv_row.append(str(val if val is not None else ""))
-                    writer.writerow(csv_row)
-
-                # ✅ 6. Yield batch only if data exists
-                data = output.getvalue()
-                if data:
-                    yield data
+            with registry.cursor() as new_cr:
+                new_env = api.Environment(new_cr, uid, context)
+                # sudo() is needed for cross-model API access and system-level Bridge API calls
+                wizard_new = new_env["g2p.bgtask.summary.wizard"].sudo().browse(wizard_id)
                 
+                output = io.StringIO()
+                writer = csv.writer(output)
+
+                # Yield BOM + Headers immediately
+                output.write('\ufeff')
+                friendly_headers = [header for _, header in self.EXPORT_COLUMNS]
+                writer.writerow(friendly_headers)
+                yield output.getvalue()
                 output.truncate(0)
                 output.seek(0)
 
-                # ✅ 7. Maintain healthy DB cursor
-                request.env.cr.commit()
-                _logger.info("Exported batch %s/%s, records=%s", page, num_pages, len(records))
+                page = 1
+                while True:
+                    # ✅ Safety Check: Ensure wizard still exists mid-stream
+                    if not wizard_new.exists():
+                        _logger.error("Wizard %s deleted during export", wizard_id)
+                        writer.writerow(["ERROR", "Task record was deleted during export."])
+                        yield output.getvalue()
+                        break
+
+                    records = []
+                    # ✅ Retry Logic: 3 attempts per batch
+                    for attempt in range(3):
+                        try:
+                            _logger.info("Fetching batch %s (Attempt %s) for wizard %s", page, attempt + 1, wizard_id)
+                            res = wizard_new.get_beneficiaries(wizard_new.id, page, PAGE_SIZE, None)
+                            records = res.get("message", {}).get("beneficiaries") or []
+                            break
+                        except Exception as e:
+                            _logger.warning("Batch %s attempt %s failed: %s", page, attempt + 1, e)
+                            new_cr.rollback()
+                            if attempt == 2:
+                                # ✅ Final Failure: Write error row to CSV
+                                _logger.error("Batch %s failed permanently after 3 attempts", page)
+                                writer.writerow(["ERROR", f"Failed to fetch batch {page} after 3 attempts: {str(e)}"])
+                                yield output.getvalue()
+                                return # Kill the stream
+                            time.sleep(1) # Backoff before retry
+
+                    if not records:
+                        _logger.info("Export complete at page %s", page)
+                        break
+
+                    for row in records:
+                        nominee_parts = [
+                            str(row.get(f)).strip()
+                            for f in ("nominee_first_name", "nominee_middle_name", "nominee_last_name")
+                            if row.get(f) and str(row.get(f)).strip()
+                        ]
+                        row["nominee_name"] = " ".join(nominee_parts) if nominee_parts else ""
+
+                        csv_row = []
+                        for field, _ in self.EXPORT_COLUMNS:
+                            val = row.get(field)
+                            if isinstance(val, (dict, list)):
+                                val = json.dumps(val)
+                            csv_row.append(str(val if val is not None else ""))
+                        writer.writerow(csv_row)
+
+                    data = output.getvalue()
+                    if data:
+                        yield data
+                    
+                    output.truncate(0)
+                    output.seek(0)
+                    _logger.info("Exported batch %s, records=%s", page, len(records))
+                    
+                    if len(records) < PAGE_SIZE:
+                        break
+                    page += 1
 
         filename = "beneficiaries_%s.csv" % wizard.id
         return request.make_response(
