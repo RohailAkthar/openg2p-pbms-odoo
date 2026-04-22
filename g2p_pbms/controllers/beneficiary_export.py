@@ -3,6 +3,7 @@ import csv
 import json
 from odoo import http
 from odoo.http import request
+import requests
 
 
 PAGE_SIZE = 1000
@@ -57,20 +58,59 @@ class G2PBeneficiaryExportController(http.Controller):
         if not wizard.exists():
             return request.not_found()
 
-        # Get the actual Beneficiary List to find the total count
-        # We search by UUID because wizard.beneficiary_list_id depends on context which is lost in the controller
+        # ✅ 1. Fetch live count from API /summary endpoint
+        api_url = request.env['ir.config_parameter'].sudo().get_param('g2p_pbms.staff_portal_api_url')
+        sender_id = request.env['ir.config_parameter'].sudo().get_param('g2p_pbms.keymanager_sign_application_id')
         list_uuid = wizard.beneficiary_list_uuid
-        beneficiary_list = request.env["g2p.beneficiary.list"].sudo().search([
-            ('beneficiary_list_id', '=', list_uuid)
-        ], limit=1)
         
-        if not beneficiary_list:
-            _logger.warning("Could not find Beneficiary List with UUID %s for wizard %s", list_uuid, wizard_id)
-            # Fallback to the ID if it happens to be set (though usually it won't be)
-            beneficiary_list = request.env["g2p.beneficiary.list"].sudo().browse(wizard.beneficiary_list_id)
+        total_count = 0
+        if api_url and list_uuid:
+            try:
+                summary_endpoint = f"{api_url}/summary"
+                payload = {
+                    "signature": "string",
+                    "header": {
+                        "version": "1.0.0",
+                        "message_id": "string",
+                        "message_ts": "string",
+                        "action": "summary",
+                        "sender_id": sender_id,
+                        "sender_uri": "",
+                        "receiver_id": "",
+                        "total_count": 0,
+                        "is_msg_encrypted": False,
+                        "meta": "string"
+                    },
+                    "message": {
+                        "beneficiary_list_id": list_uuid,
+                        "target_registry": wizard.target_registry
+                    }
+                }
+                # Use exact separators for JWT signature consistency
+                payload_json = json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True)
+                jwt_token = request.env['keymanager.provider'].sudo().jwt_sign_keymanager(payload_json)
+                
+                res = requests.post(
+                    summary_endpoint, 
+                    json=payload, 
+                    headers={"Signature": jwt_token, "Content-Type": "application/json"}, 
+                    timeout=10
+                )
+                res.raise_for_status()
+                summary_data = res.json()
+                
+                msg = summary_data.get("message", {})
+                total_count = msg.get("beneficiary_list_summary", {}).get("number_of_registrants") or 0
+                _logger.info("API Summary reported %s beneficiaries for list %s", total_count, list_uuid)
+            except Exception as e:
+                _logger.error("Failed to fetch live count from API: %s", e)
+        
+        # Fallback to Odoo record if API fails or returns 0
+        if not total_count:
+            beneficiary_list = request.env["g2p.beneficiary.list"].sudo().search([('beneficiary_list_id', '=', list_uuid)], limit=1)
+            total_count = beneficiary_list.number_of_registrants or 0
+            _logger.info("Falling back to Odoo record count: %s", total_count)
 
-        total_count = beneficiary_list.number_of_registrants or 0
-        _logger.info("Exporting %s beneficiaries for list %s (UUID: %s)", total_count, beneficiary_list.mnemonic, list_uuid)
         num_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 0
 
         def generate_csv_data():
