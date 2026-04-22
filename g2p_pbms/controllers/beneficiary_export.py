@@ -10,7 +10,7 @@ from odoo.http import request
 
 _logger = logging.getLogger(__name__)
 
-PAGE_SIZE = 2000
+PAGE_SIZE = 1000
 
 
 class G2PBeneficiaryExportController(http.Controller):
