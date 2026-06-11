@@ -172,6 +172,12 @@ class G2PEligibilityRuleDefinition(models.Model):
             else:
                 table_alias = tokens[0]
 
+            if id_field:
+                if where_str:
+                    where_str += " AND %s.%s IS NOT NULL" % (table_alias, id_field)
+                else:
+                    where_str = " WHERE %s.%s IS NOT NULL" % (table_alias, id_field)
+
             query_str = (
                 "SELECT %s.%s::TEXT AS %s FROM "
                 % (table_alias, id_field, alias)

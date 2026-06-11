@@ -25,8 +25,11 @@ class G2PBeneficiaryExportController(http.Controller):
         ("amount", "Amount"),
         ("street", "Shehia"),
         ("district_name", "District"),
-        ("region_name", "Area"),
+        ("region_name", "Region"),
         ("gender", "Gender"),
+        ("birthdate", "Date of Birth"),
+        ("phone", "Mobile"),
+        ("disability", "Disability"),
     ]
 
     @http.route(
@@ -146,7 +149,17 @@ class G2PBeneficiaryExportController(http.Controller):
                         break
                     page += 1
 
-        filename = "beneficiaries_%s.csv" % wizard.id
+        program_name = wizard.program_id.program_mnemonic or "Program"
+        list_mnemonic = wizard.mnemonic or ""
+        
+        if (wizard.list_stage or "").lower() == "disbursement":
+            stage_str = "Disbursement List"
+        else:
+            stage_str = "Enrollment List"
+            
+        filename = "%s %s %s.csv" % (program_name, stage_str, list_mnemonic)
+        filename = " ".join(filename.split())
+
         return request.make_response(
             generate_csv_data(),
             headers=[
