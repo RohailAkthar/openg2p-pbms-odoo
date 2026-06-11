@@ -107,7 +107,7 @@ class G2PBeneficiaryExportController(http.Controller):
                         if partner_ids:
                             partners = new_env["res.partner"].sudo().browse(partner_ids)
                             for p in partners:
-                                val = getattr(p, multiplier_field, 1.0)
+                                val = getattr(p, multiplier_field, 1.0) if multiplier_field in p._fields else 1.0
                                 try:
                                     multiplier_values[p.id] = float(val) if val is not None else 1.0
                                 except (ValueError, TypeError):
