@@ -307,6 +307,17 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             response = requests.post(endpoint, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
             response_json = response.json()
+            # Post-process response to populate street field with partner's custom address field
+            beneficiaries = response_json.get("message", {}).get("beneficiaries") or []
+            if beneficiaries:
+                partner_ids = [b.get("id") for b in beneficiaries if b.get("id")]
+                if partner_ids:
+                    partners = self.env["res.partner"].sudo().browse(partner_ids)
+                    partner_addresses = {p.id: p.address for p in partners if p.address}
+                    for b in beneficiaries:
+                        p_id = b.get("id")
+                        if p_id in partner_addresses:
+                            b["street"] = partner_addresses[p_id]
         except Exception as e:
             _logger.error("API call failed: %s", e)
             raise e
