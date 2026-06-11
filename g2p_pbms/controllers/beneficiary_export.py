@@ -18,36 +18,15 @@ class G2PBeneficiaryExportController(http.Controller):
     # Ordered list of (raw_field, friendly_header)
     # Fields not listed here will be excluded from the export
     EXPORT_COLUMNS = [
-        ("name", "Name"),
-        ("gender", "Gender"),
-        ("birthdate", "Date of Birth"),
-        ("region_name", "Region"),
-        ("district_name", "District"),
-        ("benf_zan_id", "ZAN ID"),
-        ("street", "Address"),
-        ("phone", "Phone"),
-        ("benf_post_code", "Post Code"),
-        ("disability", "Disability"),
-        ("is_receiving_allowance", "Receiving Allowance"),
-        ("has_health_insurance", "Health Insurance"),
-        ("payment_mode", "Payment Method"),
-        ("bank_name", "Bank Name"),
+        ("name", "Beneficiary Name"),
+        ("benf_zan_id", "Zanzibar ID"),
         ("account_num", "Account Number"),
-        ("account_name", "Account Name"),
-        ("mobile_wallet", "Mobile Wallet"),
-        ("other_pension", "Other Pension"),
-        ("scheme_name", "Scheme Name"),
-        # Nominee fields — first/middle/last name merged into "Nominee Name"
-        ("nominee_name", "Nominee Name"),
-        ("nominee_gender", "Nominee Gender"),
-        ("nominee_zanid", "Nominee ZAN ID"),
-        ("nominee_mobile", "Nominee Mobile"),
-        ("nominee_rel_benf", "Nominee Relationship"),
-        ("nominee_region", "Nominee Region"),
-        ("nominee_district", "Nominee District"),
-        ("nominee_shehia", "Nominee Shehia"),
-        ("nominee_house_street", "Nominee Address"),
-        ("nominee_post_code", "Nominee Post Code"),
+        ("nominee_name", "Next of Kin Name"),
+        ("amount", "Amount"),
+        ("street", "Shehia"),
+        ("district_name", "District"),
+        ("region_name", "Area"),
+        ("gender", "Gender"),
     ]
 
     @http.route(
@@ -114,6 +93,26 @@ class G2PBeneficiaryExportController(http.Controller):
                         _logger.info("Export complete at page %s", page)
                         break
 
+                    # Retrieve program's entitlement rules to determine quantity and multiplier
+                    rules = wizard_new.program_id.entitlement_rule_ids.filtered(
+                        lambda r: r.target_registry == wizard_new.target_registry
+                    )
+                    quantity = rules[0].quantity if rules else 0.0
+                    multiplier_field = rules[0].multiplier if (rules and rules[0].multiplier) else False
+
+                    # Fetch multiplier values in batch
+                    multiplier_values = {}
+                    if multiplier_field:
+                        partner_ids = [r.get("id") for r in records if r.get("id")]
+                        if partner_ids:
+                            partners = new_env["res.partner"].sudo().browse(partner_ids)
+                            for p in partners:
+                                val = getattr(p, multiplier_field, 1.0)
+                                try:
+                                    multiplier_values[p.id] = float(val) if val is not None else 1.0
+                                except (ValueError, TypeError):
+                                    multiplier_values[p.id] = 1.0
+
                     for row in records:
                         nominee_parts = [
                             str(row.get(f)).strip()
@@ -121,6 +120,11 @@ class G2PBeneficiaryExportController(http.Controller):
                             if row.get(f) and str(row.get(f)).strip()
                         ]
                         row["nominee_name"] = " ".join(nominee_parts) if nominee_parts else ""
+
+                        # Calculate amount dynamically
+                        partner_id = row.get("id")
+                        mult_val = multiplier_values.get(partner_id, 1.0)
+                        row["amount"] = quantity * mult_val
 
                         csv_row = []
                         for field, _ in self.EXPORT_COLUMNS:
