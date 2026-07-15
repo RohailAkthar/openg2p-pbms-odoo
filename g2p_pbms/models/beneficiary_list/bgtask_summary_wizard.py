@@ -276,25 +276,23 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
         endpoint = f"{api_url}/search_beneficiaries"
         payload = {
             "signature": "string",
-            "header": {
-                "version": "1.0.0",
-                "message_id": "string",
-                "message_ts": "string",
-                "action": "search_beneficiaries",
-                "sender_id": sender_id,
-                "sender_uri": "",
-                "receiver_id": "",
-                "total_count": 0,
-                "is_msg_encrypted": False,
-                "meta": "string"
+            "request_header": {
+                "sender_app_mnemonic": sender_id,
+                "sender_app_url": "",
+                "request_id": "string",
+                "request_timestamp": datetime.utcnow().isoformat(),
             },
-            "message": {
-                "beneficiary_list_id": wizard.beneficiary_list_uuid,
-                "target_registry": wizard.target_registry,
-                "page": page,
-                "page_size": page_size,
-                "search_query": sql_query or "",
-                "order_by": order_by_condition or "id asc",
+            "request_body": {
+                "pagination_request": {
+                    "current_page": page,
+                    "page_size": page_size,
+                    "sort_by": order_by_condition or "id asc",
+                    "search_text": sql_query or "",
+                },
+                "request_payload": {
+                    "beneficiary_list_id": wizard.beneficiary_list_uuid,
+                    "target_registry": wizard.target_registry,
+                }
             }
         }
 
@@ -307,10 +305,16 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             response = requests.post(endpoint, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
             response_json = response.json()
+            payload_data = response_json.get("response_body", {}).get("response_payload", {})
+            return {
+                "message": {
+                    "beneficiaries": payload_data.get("beneficiaries") or [],
+                    "total_beneficiary_count": payload_data.get("total_beneficiary_count") or 0
+                }
+            }
         except Exception as e:
             _logger.error("API call failed: %s", e)
             raise e
-        return response_json
 
     @api.depends('target_registry')
     def _compute_summary_lines(self):
@@ -325,21 +329,17 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             endpoint = f"{api_url}/summary"
             payload = {
                 "signature": "string",
-                "header": {
-                    "version": "1.0.0",
-                    "message_id": "string",
-                    "message_ts": "string",
-                    "action": "summary",
-                    "sender_id": sender_id,
-                    "sender_uri": "",
-                    "receiver_id": "",
-                    "total_count": 0,
-                    "is_msg_encrypted": False,
-                    "meta": "string"
+                "request_header": {
+                    "sender_app_mnemonic": sender_id,
+                    "sender_app_url": "",
+                    "request_id": "string",
+                    "request_timestamp": datetime.utcnow().isoformat(),
                 },
-                "message": {
-                    "beneficiary_list_id": wizard.beneficiary_list_uuid,
-                    "target_registry": wizard.target_registry
+                "request_body": {
+                    "request_payload": {
+                        "beneficiary_list_id": wizard.beneficiary_list_uuid,
+                        "target_registry": wizard.target_registry
+                    }
                 }
             }
 
@@ -362,7 +362,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                     }
                 }
             lines = []
-            message = api_response.get('message', {})
+            message = api_response.get('response_body', {}).get('response_payload', {}).get('summary', {}) or {}
 
             # Prepare benefit_code_id to mnemonic mapping
             benefit_code_obj = self.env['g2p.benefit.codes'].sudo()
@@ -436,20 +436,16 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             endpoint = f"{api_url}/disbursement_envelope"
             payload = {
                 "signature": "string",
-                "header": {
-                    "version": "1.0.0",
-                    "message_id": "string",
-                    "message_ts": "string",
-                    "action": "disbursement_envelope",
-                    "sender_id": sender_id,
-                    "sender_uri": "",
-                    "receiver_id": "",
-                    "total_count": 0,
-                    "is_msg_encrypted": False,
-                    "meta": "string"
+                "request_header": {
+                    "sender_app_mnemonic": sender_id,
+                    "sender_app_url": "",
+                    "request_id": "string",
+                    "request_timestamp": datetime.utcnow().isoformat(),
                 },
-                "message": {
-                    "beneficiary_list_id": wizard.beneficiary_list_uuid
+                "request_body": {
+                    "request_payload": {
+                        "beneficiary_list_id": wizard.beneficiary_list_uuid
+                    }
                 }
             }
 
@@ -466,8 +462,8 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             except Exception as e:
                 _logger.error("Disbursement Envelope API call failed: %s", e)
                 continue
-            message = api_response.get('message', {})
-            envelope_list = message.get('disbursement_envelopes', [])
+            message = api_response.get('response_body', {}).get('response_payload', {}) or {}
+            envelope_list = message.get('disbursement_envelopes') or []
             lines = []
             # Use the model's _fields attribute via env, not via the class directly
             envelope_model = self.env['g2p.api.disbursement.envelope.line']
@@ -498,20 +494,16 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             endpoint = f"{api_url}/disbursement_batch"
             payload = {
                 "signature": "string",
-                "header": {
-                    "version": "1.0.0",
-                    "message_id": "string",
-                    "message_ts": "string",
-                    "action": "disbursement_batch",
-                    "sender_id": sender_id,
-                    "sender_uri": "",
-                    "receiver_id": "",
-                    "total_count": 0,
-                    "is_msg_encrypted": False,
-                    "meta": "string"
+                "request_header": {
+                    "sender_app_mnemonic": sender_id,
+                    "sender_app_url": "",
+                    "request_id": "string",
+                    "request_timestamp": datetime.utcnow().isoformat(),
                 },
-                "message": {
-                    "beneficiary_list_id": wizard.beneficiary_list_uuid
+                "request_body": {
+                    "request_payload": {
+                        "beneficiary_list_id": wizard.beneficiary_list_uuid
+                    }
                 }
             }
 
@@ -528,8 +520,8 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             except Exception as e:
                 _logger.error("Disbursement Batch API call failed: %s", e)
                 continue
-            message = api_response.get('message', {})
-            batch_list = message.get('disbursement_batches', [])
+            message = api_response.get('response_body', {}).get('response_payload', {}) or {}
+            batch_list = message.get('disbursement_batches') or []
             lines = []
             # Use the model's _fields attribute via env, not via the class directly
             batch_model = self.env['g2p.api.disbursement.batch.line']
@@ -707,19 +699,17 @@ class G2PAPIDisbursementEnvelopeLine(models.TransientModel):
                 _logger.error("Bridge API URL not set in environment")
             endpoint = f"{api_url}/get_disbursement_envelope_status"
             payload = {
-                "header": {
-                    "version": "1.0.0",
-                    "message_id": "string",
-                    "message_ts": "string",
-                    "action": "get_disbursement_envelope_status",
-                    "sender_id": sender_id,
-                    "sender_uri": "",
-                    "receiver_id": "",
-                    "total_count": 0,
-                    "is_msg_encrypted": False,
-                    "meta": "string"
+                "signature": "string",
+                "request_header": {
+                    "sender_app_mnemonic": sender_id,
+                    "sender_app_url": "",
+                    "request_id": "string",
+                    "request_timestamp": datetime.utcnow().isoformat(),
+                    "instance_id": "string"
                 },
-                "message": self.disbursement_envelope_id,
+                "request_body": {
+                    "request_payload": self.disbursement_envelope_id
+                }
             }
 
             jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
@@ -738,7 +728,7 @@ class G2PAPIDisbursementEnvelopeLine(models.TransientModel):
                 _logger.error("API call failed: %s", e)
                 return
 
-            message = resp_data.get("message", {})
+            message = resp_data.get("response_body", {}).get("response_payload", {}) or {}
 
             summary_vals = {
                 "wizard_id": self.wizard_id.id if self.wizard_id else False,
@@ -877,19 +867,17 @@ class G2PAPIDisbursementBatchLine(models.TransientModel):
                 _logger.error("Bridge API URL not set in environment")
             endpoint = f"{api_url}/get_disbursement_batch_control"
             payload = {
-                "header": {
-                    "version": "1.0.0",
-                    "message_id": "string",
-                    "message_ts": "string",
-                    "action": "get_disbursement_batch_control",
-                    "sender_id": sender_id,
-                    "sender_uri": "",
-                    "receiver_id": "",
-                    "total_count": 0,
-                    "is_msg_encrypted": False,
-                    "meta": "string"
+                "signature": "string",
+                "request_header": {
+                    "sender_app_mnemonic": sender_id,
+                    "sender_app_url": "",
+                    "request_id": "string",
+                    "request_timestamp": datetime.utcnow().isoformat(),
+                    "instance_id": "string"
                 },
-                "message": self.batch_id,
+                "request_body": {
+                    "request_payload": self.batch_id
+                }
             }
 
             jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
@@ -907,7 +895,7 @@ class G2PAPIDisbursementBatchLine(models.TransientModel):
                 _logger.error("API call failed: %s", e)
                 return
 
-            message = resp_data.get("message", {})
+            message = resp_data.get("response_body", {}).get("response_payload", {}) or {}
 
             summary_vals = {
                 "wizard_id": self.wizard_id.id if self.wizard_id else False,
