@@ -19,8 +19,8 @@
                     <div style="margin-bottom: 20px;">
                         <center>
                             <img
-                                t-att-src="'/g2p_pbms/static/description/icon.png'"
-                                alt="OpenG2P Logo"
+                                t-att-src="'/g2p_pbms/static/src/img/logo.png'"
+                                alt="SMZ Logo"
                                 style="max-height: 100px;"
                             />
                         </center>
