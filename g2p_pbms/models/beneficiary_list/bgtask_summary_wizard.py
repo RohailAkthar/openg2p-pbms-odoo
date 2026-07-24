@@ -268,6 +268,9 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
             response.raise_for_status()
             response_json = response.json()
+            if "message" not in response_json and "response_body" in response_json:
+                payload_data = response_json.get("response_body", {}).get("response_payload", {})
+                response_json["message"] = payload_data
         except Exception as e:
             _logger.error("API call failed: %s", e)
             return {
@@ -347,6 +350,14 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 }
             lines = []
             message = api_response.get('message', {})
+            if not message and 'response_body' in api_response:
+                payload_data = api_response.get('response_body', {}).get('response_payload', {})
+                if 'summary' in payload_data:
+                    message = payload_data.get('summary') or {}
+                else:
+                    message = payload_data
+            if isinstance(message, dict) and 'summary' in message and message.get('summary'):
+                message = message.get('summary')
 
             # Prepare benefit_code_id to mnemonic mapping
             benefit_code_obj = self.env['g2p.benefit.codes'].sudo()
