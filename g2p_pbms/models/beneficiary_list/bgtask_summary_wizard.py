@@ -396,28 +396,27 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             registry_dict = message.get('registry_summary') or {}
             if isinstance(registry_dict, dict):
                 for key, value in registry_dict.items():
-                if key in excluded_keys or value is None:
-                    continue
-                if isinstance(value, dict):
-                    for benefit_code_id, benefit_value in value.items():
-                        if benefit_value is None:
-                            continue
-                        benefit_mnemonic = benefit_code_id_to_mnemonic.get(str(benefit_code_id), str(benefit_code_id))
-                        measurement_unit = benefit_code_id_to_unit.get(str(benefit_code_id), "")
+                    if key in excluded_keys or value is None:
+                        continue
+                    if isinstance(value, dict):
+                        for benefit_code_id, benefit_value in value.items():
+                            if benefit_value is None:
+                                continue
+                            benefit_mnemonic = benefit_code_id_to_mnemonic.get(str(benefit_code_id), str(benefit_code_id))
+                            measurement_unit = benefit_code_id_to_unit.get(str(benefit_code_id), "")
+                            lines.append((0, 0, {
+                                'wizard_id': wizard.id,
+                                'key': f"{key.replace('_', ' ').title()} - {benefit_mnemonic}",
+                                'value': f"{'{:,}'.format(int(benefit_value)) if isinstance(benefit_value, (int, float)) else str(benefit_value)} {measurement_unit}".strip(),
+                                'summary_type': 'entitlement'
+                            }))
+                    else:
                         lines.append((0, 0, {
                             'wizard_id': wizard.id,
-                            'key': f"{key.replace('_', ' ').title()} - {benefit_mnemonic}",
-                            'value': f"{'{:,}'.format(int(benefit_value)) if isinstance(benefit_value, (int, float)) else str(benefit_value)} {measurement_unit}".strip(),
-                            'summary_type': 'entitlement'
+                            'key': key.replace('_', ' ').title(),
+                            'value': '{:,}'.format(int(value)) if isinstance(value, (int, float)) else str(value),
+                            'summary_type': 'eligibility'
                         }))
-                else:
-                    lines.append((0, 0, {
-                        'wizard_id': wizard.id,
-                        'key': key.replace('_', ' ').title(),
-                        # Format the value with thousands separator if it's a number, otherwise convert to string
-                        'value': '{:,}'.format(int(value)) if isinstance(value, (int, float)) else str(value),
-                        'summary_type': 'eligibility'
-                    }))
 
             wizard.summary_line_ids = lines
 
