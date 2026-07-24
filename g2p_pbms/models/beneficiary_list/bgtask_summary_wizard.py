@@ -220,28 +220,32 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
 
         sql_query, order_by_condition = self._build_sql_query(odoo_domain, wizard.target_registry)
         endpoint = f"{api_url}/search_beneficiaries"
+        header_data = {
+            "version": "1.0.0",
+            "message_id": "string",
+            "message_ts": "string",
+            "action": "search_beneficiaries",
+            "sender_id": sender_id,
+            "sender_uri": "",
+            "receiver_id": "",
+            "total_count": 0,
+            "is_msg_encrypted": False,
+            "meta": "string"
+        }
+        message_data = {
+            "beneficiary_list_id": wizard.beneficiary_list_uuid,
+            "target_registry": wizard.target_registry,
+            "page": page,
+            "page_size": page_size,
+            "search_query": sql_query or "",
+            "order_by": order_by_condition or "id asc",
+        }
         payload = {
             "signature": "string",
-            "header": {
-                "version": "1.0.0",
-                "message_id": "string",
-                "message_ts": "string",
-                "action": "search_beneficiaries",
-                "sender_id": sender_id,
-                "sender_uri": "",
-                "receiver_id": "",
-                "total_count": 0,
-                "is_msg_encrypted": False,
-                "meta": "string"
-            },
-            "message": {
-                "beneficiary_list_id": wizard.beneficiary_list_uuid,
-                "target_registry": wizard.target_registry,
-                "page": page,
-                "page_size": page_size,
-                "search_query": sql_query or "",
-                "order_by": order_by_condition or "id asc",
-            }
+            "header": header_data,
+            "message": message_data,
+            "request_header": header_data,
+            "request_body": message_data,
         }
 
         jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
@@ -276,24 +280,28 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             if not api_url:
                 _logger.error("API_URL not set in environment")
             endpoint = f"{api_url}/summary"
+            header_data = {
+                "version": "1.0.0",
+                "message_id": "string",
+                "message_ts": "string",
+                "action": "summary",
+                "sender_id": sender_id,
+                "sender_uri": "",
+                "receiver_id": "",
+                "total_count": 0,
+                "is_msg_encrypted": False,
+                "meta": "string"
+            }
+            message_data = {
+                "beneficiary_list_id": wizard.beneficiary_list_uuid,
+                "target_registry": wizard.target_registry
+            }
             payload = {
                 "signature": "string",
-                "header": {
-                    "version": "1.0.0",
-                    "message_id": "string",
-                    "message_ts": "string",
-                    "action": "summary",
-                    "sender_id": sender_id,
-                    "sender_uri": "",
-                    "receiver_id": "",
-                    "total_count": 0,
-                    "is_msg_encrypted": False,
-                    "meta": "string"
-                },
-                "message": {
-                    "beneficiary_list_id": wizard.beneficiary_list_uuid,
-                    "target_registry": wizard.target_registry
-                }
+                "header": header_data,
+                "message": message_data,
+                "request_header": header_data,
+                "request_body": message_data,
             }
 
             jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
