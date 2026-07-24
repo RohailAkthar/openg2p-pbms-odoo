@@ -251,6 +251,12 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
         request_body_data = {
             **message_data,
             "request_payload": message_data,
+            "pagination_request": {
+                "search_text": sql_query or "",
+                "current_page": page,
+                "page_size": page_size,
+                "sort_by": order_by_condition or "id asc",
+            },
         }
         payload = {
             "signature": "string",

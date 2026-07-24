@@ -100,7 +100,7 @@
                       </tree>
                     </field>
                   </group>
-                  <group>
+                  <group invisible="list_stage == 'enrollment'">
                     <div style="white-space: nowrap; margin-bottom: 10px;">
                       <strong>
                         <field name="entitlement_group_title" readonly="1" widget="handle_display"/>
