@@ -219,13 +219,13 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             _logger.error("API URL not set in environment")
 
         sql_query, order_by_condition = self._build_sql_query(odoo_domain, wizard.target_registry)
-        endpoint = f"{api_url}/search_beneficiaries"
+        now_ts = datetime.utcnow().isoformat() + "Z"
         header_data = {
             "version": "1.0.0",
             "message_id": "string",
-            "message_ts": "string",
+            "message_ts": now_ts,
             "action": "search_beneficiaries",
-            "sender_id": sender_id,
+            "sender_id": sender_id or "PBMS",
             "sender_uri": "",
             "receiver_id": "",
             "total_count": 0,
@@ -240,12 +240,23 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             "search_query": sql_query or "",
             "order_by": order_by_condition or "id asc",
         }
+        request_header_data = {
+            **header_data,
+            "sender_app_mnemonic": "PBMS",
+            "sender_app_url": "",
+            "request_id": "string",
+            "request_timestamp": now_ts,
+        }
+        request_body_data = {
+            **message_data,
+            "request_payload": message_data,
+        }
         payload = {
             "signature": "string",
             "header": header_data,
             "message": message_data,
-            "request_header": header_data,
-            "request_body": message_data,
+            "request_header": request_header_data,
+            "request_body": request_body_data,
         }
 
         jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
@@ -280,12 +291,13 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             if not api_url:
                 _logger.error("API_URL not set in environment")
             endpoint = f"{api_url}/summary"
+            now_ts = datetime.utcnow().isoformat() + "Z"
             header_data = {
                 "version": "1.0.0",
                 "message_id": "string",
-                "message_ts": "string",
+                "message_ts": now_ts,
                 "action": "summary",
-                "sender_id": sender_id,
+                "sender_id": sender_id or "PBMS",
                 "sender_uri": "",
                 "receiver_id": "",
                 "total_count": 0,
@@ -296,12 +308,23 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 "beneficiary_list_id": wizard.beneficiary_list_uuid,
                 "target_registry": wizard.target_registry
             }
+            request_header_data = {
+                **header_data,
+                "sender_app_mnemonic": "PBMS",
+                "sender_app_url": "",
+                "request_id": "string",
+                "request_timestamp": now_ts,
+            }
+            request_body_data = {
+                **message_data,
+                "request_payload": message_data,
+            }
             payload = {
                 "signature": "string",
                 "header": header_data,
                 "message": message_data,
-                "request_header": header_data,
-                "request_body": message_data,
+                "request_header": request_header_data,
+                "request_body": request_body_data,
             }
 
             jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
