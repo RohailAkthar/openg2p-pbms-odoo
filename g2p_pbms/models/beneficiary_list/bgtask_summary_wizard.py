@@ -217,6 +217,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
 
         if not api_url:
             _logger.error("API URL not set in environment")
+        endpoint = f"{api_url}/search_beneficiaries"
 
         sql_query, order_by_condition = self._build_sql_query(odoo_domain, wizard.target_registry)
         now_ts = datetime.utcnow().isoformat() + "Z"
