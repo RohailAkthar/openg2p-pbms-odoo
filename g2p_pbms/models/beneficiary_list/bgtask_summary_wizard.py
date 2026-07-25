@@ -255,7 +255,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 "search_text": sql_query or "",
                 "current_page": page,
                 "page_size": page_size,
-                "sort_by": order_by_condition or "id asc",
+                "sort_by": order_by_condition if order_by_condition and order_by_condition != "id asc" and order_by_condition != "name" else "link_registry_id asc",
             },
         }
         payload = {
