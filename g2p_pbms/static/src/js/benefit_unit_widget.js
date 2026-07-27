@@ -15,6 +15,7 @@ export class BenefitUnitWidget extends CharField {
         });
 
         this.currencyOptions = [
+            { value: "NGN", label: "NGN" },
             { value: "USD", label: "USD" },
             { value: "EUR", label: "EUR" },
             { value: "GBP", label: "GBP" },

@@ -146,13 +146,18 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
         sql_query=""
         order_by_field="id"
         try:
-            domain_value = safe_eval(odoo_domain or "[]")
+            if isinstance(odoo_domain, (list, tuple)):
+                domain_value = odoo_domain
+            elif isinstance(odoo_domain, str):
+                domain_value = safe_eval(odoo_domain or "[]")
+            else:
+                domain_value = []
         except Exception as e:
             _logger.error(
                 "Error evaluating domain: %s",
                 e,
             )
-            sql_query = "Invalid search term"
+            sql_query = ""
             return sql_query, order_by_field
 
         target_model_name = G2PTargetModelMapping.get_target_model_name(target_registry)
@@ -162,7 +167,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 "Unknown target_registry '%s'",
                 target_registry,
             )
-            sql_query = "Unknown target registry type"
+            sql_query = ""
             return sql_query, order_by_field
 
         target_model = self.env[target_model_name]
@@ -173,7 +178,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             _logger.error(
                 "Error calculating where clause for rule: %s", e
             )
-            sql_query = "Error calculating query"
+            sql_query = ""
             return sql_query, order_by_field
 
         try:
@@ -182,23 +187,21 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             _logger.error(
                 "Error generating SQL from query: %s", e
             )
-            sql_query = "Error generating SQL"
+            sql_query = ""
             return sql_query, order_by_field
 
-        where_str = ("%s" % where_clause) if where_clause else ""
-        # Use the target model's table name in the SQL query.
-        query_str = (
-            where_str 
-        )
+        if not where_clause:
+            return "", order_by_field
+
+        where_str = "%s" % where_clause
         
         # Format the parameters as strings.
         formatted_params = list(
-            map(lambda x: "'" + str(x) + "'", where_clause_params)
+            map(lambda x: "'" + str(x).replace("'", "''") + "'", where_clause_params)
         )
 
         try:
-            formatted_query = query_str % tuple(formatted_params)
-            # formatted_query = formatted_query.replace('"', '\\"')
+            formatted_query = where_str % tuple(formatted_params)
             sql_query = formatted_query
             _logger.info("Query: %s", sql_query)
         except Exception as e:
@@ -206,7 +209,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 "Error formatting query: %s",
                 e,
             )
-            sql_query = "Error formatting query"
+            sql_query = ""
         return sql_query, order_by_field
 
     @api.model
@@ -215,80 +218,137 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
         api_url = self.env['ir.config_parameter'].sudo().get_param('g2p_pbms.staff_portal_api_url')
         sender_id = self.env['ir.config_parameter'].sudo().get_param('g2p_pbms.keymanager_sign_application_id')
 
-        if not api_url:
-            _logger.error("API URL not set in environment")
-        endpoint = f"{api_url}/search_beneficiaries"
-
         sql_query, order_by_condition = self._build_sql_query(odoo_domain, wizard.target_registry)
-        now_ts = datetime.utcnow().isoformat() + "Z"
-        header_data = {
-            "version": "1.0.0",
-            "message_id": "string",
-            "message_ts": now_ts,
-            "action": "search_beneficiaries",
-            "sender_id": sender_id or "PBMS",
-            "sender_uri": "",
-            "receiver_id": "",
-            "total_count": 0,
-            "is_msg_encrypted": False,
-            "meta": "string"
-        }
-        message_data = {
-            "beneficiary_list_id": wizard.beneficiary_list_uuid,
-            "target_registry": wizard.target_registry,
-            "page": page,
-            "page_size": page_size,
-            "search_query": sql_query or "",
-            "order_by": order_by_condition or "id asc",
-        }
-        request_header_data = {
-            **header_data,
-            "sender_app_mnemonic": "PBMS",
-            "sender_app_url": "",
-            "request_id": "string",
-            "request_timestamp": now_ts,
-        }
-        request_body_data = {
-            **message_data,
-            "request_payload": message_data,
-            "pagination_request": {
-                "search_text": sql_query or "",
-                "current_page": page,
-                "page_size": page_size,
-                "sort_by": order_by_condition if order_by_condition and order_by_condition != "id asc" and order_by_condition != "name" else "link_registry_id asc",
-            },
-        }
-        payload = {
-            "signature": "string",
-            "header": header_data,
-            "message": message_data,
-            "request_header": request_header_data,
-            "request_body": request_body_data,
-        }
 
-        jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
-        headers = {
-            "content-type": "application/json",
-            "Signature": jwt_token
-        }
-        try:
-            response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
-            response.raise_for_status()
-            response_json = response.json()
-            if "message" not in response_json and "response_body" in response_json:
-                payload_data = response_json.get("response_body", {}).get("response_payload", {})
-                response_json["message"] = payload_data
-        except Exception as e:
-            _logger.error("API call failed: %s", e)
+        response_json = None
+        if api_url:
+            endpoint = f"{api_url}/search_beneficiaries"
+            now_ts = datetime.utcnow().isoformat() + "Z"
+            header_data = {
+                "version": "1.0.0",
+                "message_id": "string",
+                "message_ts": now_ts,
+                "action": "search_beneficiaries",
+                "sender_id": sender_id or "PBMS",
+                "sender_uri": "",
+                "receiver_id": "",
+                "total_count": 0,
+                "is_msg_encrypted": False,
+                "meta": "string"
+            }
+            message_data = {
+                "beneficiary_list_id": wizard.beneficiary_list_uuid,
+                "target_registry": wizard.target_registry,
+                "page": page,
+                "page_size": page_size,
+                "search_query": sql_query or "",
+                "order_by": order_by_condition or "id asc",
+            }
+            request_header_data = {
+                **header_data,
+                "sender_app_mnemonic": "PBMS",
+                "sender_app_url": "",
+                "request_id": "string",
+                "request_timestamp": now_ts,
+            }
+            request_body_data = {
+                **message_data,
+                "request_payload": message_data,
+                "pagination_request": {
+                    "search_text": sql_query or "",
+                    "current_page": page,
+                    "page_size": page_size,
+                    "sort_by": order_by_condition if order_by_condition and order_by_condition != "id asc" and order_by_condition != "name" else "link_registry_id asc",
+                },
+            }
+            payload = {
+                "signature": "string",
+                "header": header_data,
+                "message": message_data,
+                "request_header": request_header_data,
+                "request_body": request_body_data,
+            }
+
+            try:
+                jwt_token = self.env['keymanager.provider'].jwt_sign_keymanager(json.dumps(payload, indent=None, separators=(",", ":"), sort_keys=True))
+                headers = {
+                    "content-type": "application/json",
+                    "Signature": jwt_token
+                }
+                response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+                response.raise_for_status()
+                response_json = response.json()
+                if "message" not in response_json and "response_body" in response_json:
+                    payload_data = response_json.get("response_body", {}).get("response_payload", {})
+                    response_json["message"] = payload_data
+            except Exception as e:
+                _logger.error("API call failed: %s", e)
+                response_json = None
+
+        if response_json and response_json.get("message", {}).get("beneficiaries"):
+            msg = response_json.get("message", {})
+            total_count = msg.get("total_beneficiary_count", 0)
+            if total_count <= page_size and wizard.target_registry:
+                target_model_name = G2PTargetModelMapping.get_target_model_name(wizard.target_registry)
+                if target_model_name:
+                    try:
+                        domain_val = odoo_domain if isinstance(odoo_domain, (list, tuple)) else safe_eval(odoo_domain or "[]")
+                    except Exception:
+                        domain_val = []
+                    local_count = self.env[target_model_name].sudo().search_count(domain_val)
+                    if local_count > total_count:
+                        msg["total_beneficiary_count"] = local_count
+            return response_json
+
+        # Fallback search directly in Odoo registry model
+        target_model_name = G2PTargetModelMapping.get_target_model_name(wizard.target_registry)
+        if target_model_name:
+            try:
+                domain_val = odoo_domain if isinstance(odoo_domain, (list, tuple)) else safe_eval(odoo_domain or "[]")
+            except Exception:
+                domain_val = []
+            target_model = self.env[target_model_name].sudo()
+            total_count = target_model.search_count(domain_val)
+            records = target_model.search(domain_val, offset=(page - 1) * page_size, limit=page_size)
+            beneficiaries = []
+            for rec in records:
+                beneficiaries.append({
+                    "id": rec.id,
+                    "link_registry_id": getattr(rec, "link_registry_id", str(rec.id)),
+                    "name": getattr(rec, "name", getattr(rec, "head_name", "")),
+                    "household_id": getattr(rec, "household_id", ""),
+                    "household_size": getattr(rec, "household_size", 0),
+                    "head_name": getattr(rec, "head_name", ""),
+                    "head_gender": (getattr(rec, "head_gender", "") or "").capitalize(),
+                    "head_phone": getattr(rec, "head_phone", ""),
+                    "head_dob": str(getattr(rec, "head_dob", "")) if getattr(rec, "head_dob", False) else "",
+                    "gender": (getattr(rec, "gender", "") or "").capitalize(),
+                    "institution_name": getattr(rec, "institution_name", ""),
+                    "date_of_birth": str(getattr(rec, "date_of_birth", "")) if getattr(rec, "date_of_birth", False) else "",
+                    "land_area": getattr(rec, "land_area", 0),
+                    "no_of_cattle_heads": getattr(rec, "no_of_cattle_heads", 0),
+                    "no_of_poultry_heads": getattr(rec, "no_of_poultry_heads", 0),
+                    "annual_income": getattr(rec, "annual_income", 0),
+                    "small_area_code": getattr(rec, "small_area_code", ""),
+                    "large_area_code": getattr(rec, "large_area_code", ""),
+                })
             return {
                 "message": {
-                    "total_beneficiary_count": 0,
+                    "total_beneficiary_count": total_count,
                     "page": page,
                     "page_size": page_size,
-                    "beneficiaries": []
+                    "beneficiaries": beneficiaries
                 }
             }
-        return response_json
+
+        return {
+            "message": {
+                "total_beneficiary_count": 0,
+                "page": page,
+                "page_size": page_size,
+                "beneficiaries": []
+            }
+        }
 
     @api.depends('target_registry')
     def _compute_summary_lines(self):
@@ -374,6 +434,20 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
 
             # Flatten all keys from beneficiary_list_summary
             summary_dict = message.get('beneficiary_list_summary') or {}
+            if not isinstance(summary_dict, dict):
+                summary_dict = {}
+
+            if wizard.program_id:
+                summary_dict['program_id'] = wizard.program_id.id
+                summary_dict['program_mnemonic'] = wizard.program_id.program_mnemonic
+            if wizard.beneficiary_list_uuid:
+                summary_dict['beneficiary_list_id'] = wizard.beneficiary_list_uuid
+            if 'number_of_registrants' not in summary_dict or not summary_dict['number_of_registrants']:
+                if wizard.beneficiary_list_id:
+                    b_list = self.env['g2p.beneficiary.list'].sudo().browse(wizard.beneficiary_list_id)
+                    if b_list and b_list.number_of_registrants:
+                        summary_dict['number_of_registrants'] = b_list.number_of_registrants
+
             if isinstance(summary_dict, dict):
                 for key, value in summary_dict.items():
                     if key in excluded_keys or value is None:
@@ -391,15 +465,39 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                                 'summary_type': 'entitlement'
                             }))
                     else:
+                        val = value
+                        if key == 'program_mnemonic' and wizard.program_id and wizard.program_id.program_mnemonic:
+                            val = wizard.program_id.program_mnemonic
+                        elif key == 'program_id' and wizard.program_id and wizard.program_id.id:
+                            val = wizard.program_id.id
                         lines.append((0, 0, {
                             'wizard_id': wizard.id,
                             'key': key.replace('_', ' ').title(),
-                            'value': '{:,}'.format(int(value)) if isinstance(value, (int, float)) else str(value),
+                            'value': '{:,}'.format(int(val)) if isinstance(val, (int, float)) else str(val),
                             'summary_type': 'general'
                         }))
 
             # Flatten all keys from registry_summary
             registry_dict = message.get('registry_summary') or {}
+            if not isinstance(registry_dict, dict):
+                registry_dict = {}
+
+            if (wizard.target_registry or '').lower() == 'household':
+                total_m = registry_dict.get('total_male_heads', 0) or 0
+                total_f = registry_dict.get('total_female_heads', 0) or 0
+                avg_sz = registry_dict.get('average_household_size', 0.0) or 0.0
+                if not total_m and not total_f and not avg_sz:
+                    households = self.env['g2p.household.registry'].sudo().search([])
+                    if households:
+                        total_count = len(households)
+                        m_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('male', 'm')))
+                        f_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('female', 'f')))
+                        tot_size = sum(h.household_size or 0 for h in households)
+                        calc_avg = round(tot_size / total_count, 2) if total_count > 0 else 0.0
+                        registry_dict['total_male_heads'] = m_heads
+                        registry_dict['total_female_heads'] = f_heads
+                        registry_dict['average_household_size'] = calc_avg
+
             if isinstance(registry_dict, dict):
                 for key, value in registry_dict.items():
                     if key in excluded_keys or value is None:
@@ -423,6 +521,31 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                             'value': '{:,}'.format(int(value)) if isinstance(value, (int, float)) else str(value),
                             'summary_type': 'eligibility'
                         }))
+
+            # Compute entitlement statistics from program benefit codes if missing
+            entitlement_lines = [l for l in lines if l[2].get('summary_type') == 'entitlement']
+            if not entitlement_lines and wizard.program_id:
+                program_benefits = self.env['g2p.program.benefit.codes'].sudo().search([('program_id', '=', wizard.program_id.id)])
+                reg_count = summary_dict.get('number_of_registrants', 0) or 0
+                for p_ben in program_benefits:
+                    b_mnemonic = p_ben.benefit_mnemonic or (p_ben.benefit_code_id.benefit_mnemonic if p_ben.benefit_code_id else "Benefit")
+                    unit = p_ben.measurement_unit or (p_ben.benefit_code_id.measurement_unit if p_ben.benefit_code_id else "")
+                    max_q = p_ben.max_quantity or 0.0
+                    tot_q = reg_count * max_q
+                    formatted_tot = f"{'{:,}'.format(int(tot_q)) if isinstance(tot_q, (int, float)) and tot_q == int(tot_q) else str(tot_q)} {unit}".strip()
+                    formatted_per = f"{'{:,}'.format(int(max_q)) if isinstance(max_q, (int, float)) and max_q == int(max_q) else str(max_q)} {unit}".strip()
+                    lines.append((0, 0, {
+                        'wizard_id': wizard.id,
+                        'key': f"Total Entitlement - {b_mnemonic}",
+                        'value': formatted_tot,
+                        'summary_type': 'entitlement'
+                    }))
+                    lines.append((0, 0, {
+                        'wizard_id': wizard.id,
+                        'key': f"Disbursement Per Beneficiary - {b_mnemonic}",
+                        'value': formatted_per,
+                        'summary_type': 'entitlement'
+                    }))
 
             wizard.summary_line_ids = lines
 
