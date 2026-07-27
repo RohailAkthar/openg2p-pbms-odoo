@@ -195,14 +195,27 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
 
         where_str = "%s" % where_clause
         
-        # Format the parameters as strings.
-        formatted_params = list(
-            map(lambda x: "'" + str(x).replace("'", "''") + "'", where_clause_params)
-        )
-
         try:
-            formatted_query = where_str % tuple(formatted_params)
-            sql_query = formatted_query
+            import re
+            parts = where_str.split("%s")
+            if len(parts) - 1 == len(where_clause_params):
+                new_parts = [parts[0]]
+                formatted_params = []
+                for i, param in enumerate(where_clause_params):
+                    prev_part = new_parts[-1]
+                    if isinstance(param, str):
+                        match = re.search(r'=\s*$', prev_part)
+                        if match:
+                            prev_part = prev_part[:match.start()] + ' ILIKE '
+                            new_parts[-1] = prev_part
+                        formatted_params.append("'" + str(param).replace("'", "''") + "'")
+                    else:
+                        formatted_params.append(str(param))
+                    new_parts.append(parts[i + 1])
+                sql_query = "%s".join(new_parts) % tuple(formatted_params)
+            else:
+                formatted_params = list(map(lambda x: "'" + str(x).replace("'", "''") + "'", where_clause_params))
+                sql_query = where_str % tuple(formatted_params)
             _logger.info("Query: %s", sql_query)
         except Exception as e:
             _logger.error(
