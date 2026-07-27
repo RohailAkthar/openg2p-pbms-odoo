@@ -487,16 +487,32 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 total_f = registry_dict.get('total_female_heads', 0) or 0
                 avg_sz = registry_dict.get('average_household_size', 0.0) or 0.0
                 if not total_m and not total_f and not avg_sz:
-                    households = self.env['g2p.household.registry'].sudo().search([])
-                    if households:
-                        total_count = len(households)
-                        m_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('male', 'm')))
-                        f_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('female', 'f')))
-                        tot_size = sum(h.household_size or 0 for h in households)
-                        calc_avg = round(tot_size / total_count, 2) if total_count > 0 else 0.0
-                        registry_dict['total_male_heads'] = m_heads
-                        registry_dict['total_female_heads'] = f_heads
+                    try:
+                        ben_res = self.get_beneficiaries(wizard.id, 1, 10000, None)
+                        b_list = ben_res.get('message', {}).get('beneficiaries', []) if isinstance(ben_res, dict) else []
+                    except Exception as b_err:
+                        _logger.error("Error fetching beneficiaries for stats fallback: %s", b_err)
+                        b_list = []
+                    
+                    if b_list:
+                        m_cnt = sum(1 for b in b_list if (str(b.get('head_gender') or '')).lower().startswith('m'))
+                        f_cnt = sum(1 for b in b_list if (str(b.get('head_gender') or '')).lower().startswith('f'))
+                        sizes = [float(b.get('household_size') or 0) for b in b_list if b.get('household_size') is not None]
+                        calc_avg = round(sum(sizes) / len(b_list), 2) if b_list else 0.0
+                        registry_dict['total_male_heads'] = m_cnt
+                        registry_dict['total_female_heads'] = f_cnt
                         registry_dict['average_household_size'] = calc_avg
+                    else:
+                        households = self.env['g2p.household.registry'].sudo().search([])
+                        if households:
+                            total_count = len(households)
+                            m_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('male', 'm')))
+                            f_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('female', 'f')))
+                            tot_size = sum(h.household_size or 0 for h in households)
+                            calc_avg = round(tot_size / total_count, 2) if total_count > 0 else 0.0
+                            registry_dict['total_male_heads'] = m_heads
+                            registry_dict['total_female_heads'] = f_heads
+                            registry_dict['average_household_size'] = calc_avg
 
             if isinstance(registry_dict, dict):
                 for key, value in registry_dict.items():
