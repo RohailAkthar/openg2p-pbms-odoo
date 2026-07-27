@@ -288,16 +288,21 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
         if response_json and response_json.get("message", {}).get("beneficiaries"):
             msg = response_json.get("message", {})
             total_count = msg.get("total_beneficiary_count", 0)
-            if total_count <= page_size and wizard.target_registry:
-                target_model_name = G2PTargetModelMapping.get_target_model_name(wizard.target_registry)
-                if target_model_name:
-                    try:
-                        domain_val = odoo_domain if isinstance(odoo_domain, (list, tuple)) else safe_eval(odoo_domain or "[]")
-                    except Exception:
-                        domain_val = []
-                    local_count = self.env[target_model_name].sudo().search_count(domain_val)
-                    if local_count > total_count:
-                        msg["total_beneficiary_count"] = local_count
+            if total_count <= page_size:
+                if wizard.beneficiary_list_id:
+                    b_list = self.env['g2p.beneficiary.list'].sudo().browse(wizard.beneficiary_list_id)
+                    if b_list and b_list.number_of_registrants and b_list.number_of_registrants > total_count:
+                        msg["total_beneficiary_count"] = b_list.number_of_registrants
+                elif wizard.target_registry:
+                    target_model_name = G2PTargetModelMapping.get_target_model_name(wizard.target_registry)
+                    if target_model_name:
+                        try:
+                            domain_val = odoo_domain if isinstance(odoo_domain, (list, tuple)) else safe_eval(odoo_domain or "[]")
+                        except Exception:
+                            domain_val = []
+                        local_count = self.env[target_model_name].sudo().search_count(domain_val)
+                        if local_count > total_count:
+                            msg["total_beneficiary_count"] = local_count
             return response_json
 
         # Fallback search directly in Odoo registry model
@@ -502,17 +507,6 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                         registry_dict['total_male_heads'] = m_cnt
                         registry_dict['total_female_heads'] = f_cnt
                         registry_dict['average_household_size'] = calc_avg
-                    else:
-                        households = self.env['g2p.household.registry'].sudo().search([])
-                        if households:
-                            total_count = len(households)
-                            m_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('male', 'm')))
-                            f_heads = len(households.filtered(lambda h: (h.head_gender or '').lower() in ('female', 'f')))
-                            tot_size = sum(h.household_size or 0 for h in households)
-                            calc_avg = round(tot_size / total_count, 2) if total_count > 0 else 0.0
-                            registry_dict['total_male_heads'] = m_heads
-                            registry_dict['total_female_heads'] = f_heads
-                            registry_dict['average_household_size'] = calc_avg
 
             if isinstance(registry_dict, dict):
                 for key, value in registry_dict.items():
