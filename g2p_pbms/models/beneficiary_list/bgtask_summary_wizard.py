@@ -491,7 +491,8 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 total_m = registry_dict.get('total_male_heads', 0) or 0
                 total_f = registry_dict.get('total_female_heads', 0) or 0
                 avg_sz = registry_dict.get('average_household_size', 0.0) or 0.0
-                if not total_m and not total_f and not avg_sz:
+                reg_count = summary_dict.get('number_of_registrants', 0) or 0
+                if (not total_m and not total_f and not avg_sz) or (reg_count > 0 and (total_m + total_f) > reg_count):
                     try:
                         ben_res = self.get_beneficiaries(wizard.id, 1, 10000, None)
                         b_list = ben_res.get('message', {}).get('beneficiaries', []) if isinstance(ben_res, dict) else []
