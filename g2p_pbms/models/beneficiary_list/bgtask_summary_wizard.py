@@ -409,7 +409,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 _logger.debug("API response: %s", api_response)
             except Exception as e:
                 _logger.error("API call failed at summary API endpoint %s: %s" % (endpoint, str(e)))
-                return {
+                api_response = {
                     "message": {
                         "beneficiary_list_summary": {},
                         "registry_summary": {}
