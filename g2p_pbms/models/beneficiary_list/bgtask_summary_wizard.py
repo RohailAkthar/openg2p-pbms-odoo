@@ -460,6 +460,16 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 summary_dict['program_mnemonic'] = wizard.program_id.program_mnemonic
             if wizard.beneficiary_list_uuid:
                 summary_dict['beneficiary_list_id'] = wizard.beneficiary_list_uuid
+
+            try:
+                ben_res = self.get_beneficiaries(wizard.id, 1, 1, None)
+                if isinstance(ben_res, dict):
+                    actual_total = ben_res.get('message', {}).get('total_beneficiary_count', 0)
+                    if actual_total and actual_total > (summary_dict.get('number_of_registrants') or 0):
+                        summary_dict['number_of_registrants'] = actual_total
+            except Exception as cnt_err:
+                _logger.error("Error checking total beneficiary count for summary: %s", cnt_err)
+
             if 'number_of_registrants' not in summary_dict or not summary_dict['number_of_registrants']:
                 if wizard.beneficiary_list_id:
                     b_list = self.env['g2p.beneficiary.list'].sudo().browse(wizard.beneficiary_list_id)
