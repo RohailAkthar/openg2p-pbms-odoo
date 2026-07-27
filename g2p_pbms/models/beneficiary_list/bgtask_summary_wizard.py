@@ -197,6 +197,9 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
         
         try:
             import re
+            # Map Odoo's target_table."id" to target_table."link_registry_id" for external SR DB table compatibility
+            where_str = re.sub(r'("g2p_[a_z_]+_registry")\."id"\b', r'\1."link_registry_id"', where_str)
+
             parts = where_str.split("%s")
             if len(parts) - 1 == len(where_clause_params):
                 new_parts = [parts[0]]
@@ -214,7 +217,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                     new_parts.append(parts[i + 1])
                 sql_query = "%s".join(new_parts) % tuple(formatted_params)
             else:
-                formatted_params = list(map(lambda x: "'" + str(x).replace("'", "''") + "'", where_clause_params))
+                formatted_params = list(map(lambda x: "'" + str(x).replace("'", "''") + "'" if isinstance(x, str) else str(x), where_clause_params))
                 sql_query = where_str % tuple(formatted_params)
             _logger.info("Query: %s", sql_query)
         except Exception as e:
