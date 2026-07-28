@@ -134,15 +134,29 @@ class G2PEntitlementRuleDefinition(models.Model):
                     formatted_params = []
                     for i, param in enumerate(where_clause_params):
                         prev_part = new_parts[-1]
-                        if isinstance(param, str):
-                            match = re.search(r'=\s*$', prev_part)
+                        is_num = False
+                        if isinstance(param, (int, float)):
+                            is_num = True
+                        elif isinstance(param, str):
+                            try:
+                                float(param)
+                                is_num = True
+                            except (ValueError, TypeError):
+                                is_num = False
+
+                        if isinstance(param, str) and not is_num:
+                            match = re.search(r'(?<![><!])=\s*$', prev_part)
                             if match:
                                 prev_part = prev_part[:match.start()] + ' ILIKE '
                                 new_parts[-1] = prev_part
                             formatted_params.append("'" + str(param).replace("'", "''") + "'")
                         else:
-                            formatted_params.append(str(param))
+                            if isinstance(param, str):
+                                formatted_params.append("'" + str(param).replace("'", "''") + "'")
+                            else:
+                                formatted_params.append(str(param))
                         new_parts.append(parts[i + 1])
+
                     rec.sql_query = "%s".join(new_parts) % tuple(formatted_params)
                 else:
                     formatted_params = list(map(lambda x: "'" + str(x).replace("'", "''") + "'", where_clause_params))
