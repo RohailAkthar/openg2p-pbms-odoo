@@ -16,6 +16,7 @@ export class BenefitUnitWidget extends CharField {
 
         this.currencyOptions = [
             { value: "NGN", label: "NGN" },
+            { value: "TZS", label: "TZS" },
             { value: "USD", label: "USD" },
             { value: "EUR", label: "EUR" },
             { value: "GBP", label: "GBP" },
@@ -55,6 +56,7 @@ export class BenefitUnitWidget extends CharField {
             { value: "ZMW", label: "ZMW" },
             // Add more ISO codes as needed.
         ];
+
     }
 
 }

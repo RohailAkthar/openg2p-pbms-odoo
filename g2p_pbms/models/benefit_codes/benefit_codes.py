@@ -32,6 +32,8 @@ class G2PBenefitCodes(models.Model):
 
     measurement_unit = fields.Char(string="Measurement Unit")
 
+
+
     _sql_constraints = [
         (
             "unique_benefit_mnemonic",

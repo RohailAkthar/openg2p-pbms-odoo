@@ -343,6 +343,7 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                     "head_gender": (getattr(rec, "head_gender", "") or "").capitalize(),
                     "head_phone": getattr(rec, "head_phone", ""),
                     "head_dob": str(getattr(rec, "head_dob", "")) if getattr(rec, "head_dob", False) else "",
+                    "head_income": getattr(rec, "head_income", 0.0),
                     "gender": (getattr(rec, "gender", "") or "").capitalize(),
                     "institution_name": getattr(rec, "institution_name", ""),
                     "date_of_birth": str(getattr(rec, "date_of_birth", "")) if getattr(rec, "date_of_birth", False) else "",
@@ -352,7 +353,9 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                     "annual_income": getattr(rec, "annual_income", 0),
                     "small_area_code": getattr(rec, "small_area_code", ""),
                     "large_area_code": getattr(rec, "large_area_code", ""),
+                    "address": getattr(rec, "address", ""),
                 })
+
             return {
                 "message": {
                     "total_beneficiary_count": total_count,
@@ -567,6 +570,8 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
                 for p_ben in program_benefits:
                     b_mnemonic = p_ben.benefit_mnemonic or (p_ben.benefit_code_id.benefit_mnemonic if p_ben.benefit_code_id else "Benefit")
                     unit = p_ben.measurement_unit or (p_ben.benefit_code_id.measurement_unit if p_ben.benefit_code_id else "")
+
+
                     max_q = p_ben.max_quantity or 0.0
                     tot_q = reg_count * max_q
                     formatted_tot = f"{'{:,}'.format(int(tot_q)) if isinstance(tot_q, (int, float)) and tot_q == int(tot_q) else str(tot_q)} {unit}".strip()
