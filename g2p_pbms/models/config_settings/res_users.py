@@ -4,6 +4,9 @@ class ResUsers(models.Model):
     _inherit = 'res.users'
 
     def write(self, vals):
+        if self.env.context.get('no_llg_cleanup'):
+            return super().write(vals)
+
         # Get HLG and LLG xmlids
         hlg_xmlids = [
             'g2p_pbms.group_program_super_administration',
@@ -58,12 +61,21 @@ class ResUsers(models.Model):
         for user in self:
             # Find HLGs the user is in
             high_groups = user.groups_id.filtered(lambda g: g.id in hlg_ids)
-            # Collect all implied LLGs from HLGs
+            # Collect all implied LLGs from HLGs as well as custom/other groups
             implied = set()
             for g in high_groups:
-                implied |= set(g.implied_ids.ids)
-            # Remove any LLGs not covered by current HLGs
-            for llg in user.groups_id:
-                if llg.id in llg_ids and llg.id not in implied:
-                    user.groups_id = [(3, llg.id)]
+                implied |= set(g.trans_implied_ids.ids)
+
+            other_groups = user.groups_id - high_groups
+            for g in other_groups:
+                implied |= set(g.trans_implied_ids.ids)
+                implied.add(g.id)
+
+            # Remove any LLGs not covered by assigned or implied groups
+            llgs_to_remove = [llg.id for llg in user.groups_id if llg.id in llg_ids and llg.id not in implied]
+            if llgs_to_remove:
+                user.with_context(no_llg_cleanup=True).write({
+                    'groups_id': [(3, llg_id) for llg_id in llgs_to_remove]
+                })
         return res
+
