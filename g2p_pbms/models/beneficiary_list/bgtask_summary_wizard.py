@@ -530,8 +530,9 @@ class G2PBGTaskSummaryWizard(models.TransientModel):
             api_url = self.env['ir.config_parameter'].sudo().get_param('g2p_pbms.staff_portal_api_url')
             sender_id = self.env['ir.config_parameter'].sudo().get_param('g2p_pbms.keymanager_sign_application_id')
 
-            if not api_url:
-                _logger.error("API_URL not set in environment")
+            if not api_url or not sender_id:
+                _logger.warning("API_URL or sender_id not set in environment")
+                continue
             endpoint = f"{api_url}/summary"
 
             payload = SummaryRequest(
